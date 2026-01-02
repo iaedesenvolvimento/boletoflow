@@ -70,7 +70,10 @@ const App: React.FC = () => {
 
   useEffect(() => {
     registerServiceWorker().then(() => {
-      checkPushSubscription().then(active => setIsPushActive(active));
+      checkPushSubscription().then(active => {
+        console.log('Push status check:', active);
+        setIsPushActive(active);
+      });
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -80,7 +83,7 @@ const App: React.FC = () => {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
         syncUser(session.user);
@@ -90,7 +93,19 @@ const App: React.FC = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // --- Realtime Subscription ---
+    const boletosChannel = supabase
+      .channel('public:boletos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'boletos' }, (payload) => {
+        console.log('Realtime change received:', payload);
+        fetchBoletos();
+      })
+      .subscribe();
+
+    return () => {
+      authSub.unsubscribe();
+      supabase.removeChannel(boletosChannel);
+    };
   }, []);
 
   const syncUser = async (supabaseUser: any) => {
@@ -464,23 +479,23 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center bg-slate-100 p-1 rounded-full border border-slate-200">
-              <button
-                onClick={handleRequestNotification}
-                className={`p-2 rounded-full transition-all ${notificationStatus === 'granted' ? 'text-indigo-600' : 'text-slate-400'}`}
-                title="Ativar Alerta Sonoro"
-              >
-                <BellAlertIcon className="w-5 h-5" />
-              </button>
-              <div className="h-4 w-px bg-slate-200 mx-1"></div>
-              <button
-                onClick={handleActivatePush}
-                className={`p-2 rounded-full transition-all ${isPushActive ? 'bg-emerald-50 text-emerald-600' : 'text-slate-400 font-bold text-xs'} flex items-center gap-1 hover:bg-slate-150`}
-                title="Ativar Notificações Push (Desktop/Android)"
-              >
-                <BellIcon className={`w-5 h-5 ${isPushActive ? 'fill-emerald-600' : ''}`} />
-                <span className="text-[9px] uppercase tracking-tighter">Push</span>
-              </button>
-              <div className="h-4 w-px bg-slate-200 mx-1"></div>
+              <div className="flex items-center gap-1.5 px-2">
+                <button
+                  onClick={handleRequestNotification}
+                  className={`p-2 rounded-full transition-all ${notificationStatus === 'granted' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
+                  title="Som de Alerta"
+                >
+                  <BellAlertIcon className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={handleActivatePush}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full transition-all ${isPushActive ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'text-slate-400 hover:bg-slate-100 border border-transparent'}`}
+                  title="Notificações Push (Mesmo Offline)"
+                >
+                  <SparklesIcon className={`w-4 h-4 ${isPushActive ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px] font-bold uppercase tracking-tight">Push {isPushActive ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
               <div className="flex items-center gap-2 pr-3 pl-1">
                 <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center">
                   <UserIcon className="w-3.5 h-3.5 text-slate-500" />
