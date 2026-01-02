@@ -148,33 +148,42 @@ const App: React.FC = () => {
 
   // --- Realtime Subscription ---
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user?.id) return;
+
+    console.log('Realtime: Iniciando canal para usuário', session.user.id);
 
     const boletosChannel = supabase
-      .channel('public:boletos')
+      .channel('boletos-realtime')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'boletos'
       }, (payload) => {
-        console.log('Realtime change received:', payload);
-        fetchBoletos();
+        // Manually filter for user security/privacy as a backup
+        if (payload.new && payload.new.user_id === session.user.id) {
+          console.log('Realtime: Mudança detectada!', payload.eventType);
+          fetchBoletos();
 
-        if (payload.eventType === 'INSERT') {
-          sendNotification('Novo Boleto!', `O boleto "${payload.new.title}" foi adicionado.`, true);
+          if (payload.eventType === 'INSERT') {
+            sendNotification('Novo Boleto!', `O boleto "${payload.new.title}" foi adicionado.`, true);
+          }
           setHasNewUpdate(true);
-        } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+        } else if (payload.old && payload.old.user_id === session.user.id) {
+          // For DELETE we only have the old data usually
+          console.log('Realtime: Boleto removido');
+          fetchBoletos();
           setHasNewUpdate(true);
         }
       })
       .subscribe((status) => {
-        console.log('Realtime subscription status:', status);
+        console.log('Realtime: Status da conexão:', status);
       });
 
     return () => {
+      console.log('Realtime: Desconectando do canal');
       supabase.removeChannel(boletosChannel);
     };
-  }, [session, fetchBoletos, sendNotification]);
+  }, [session?.user?.id, fetchBoletos, sendNotification]);
 
   useEffect(() => {
     const primeAudio = () => {
