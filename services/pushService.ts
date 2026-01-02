@@ -56,10 +56,11 @@ export async function subscribeUserToPush() {
             if (error) throw error;
             return true;
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('Falha ao inscrever usuário:', error);
+        return { success: false, error: error.message || 'Erro desconhecido' };
     }
-    return false;
+    return { success: false, error: 'Usuário não autenticado.' };
 }
 
 function urlBase64ToUint8Array(base64String: string) {

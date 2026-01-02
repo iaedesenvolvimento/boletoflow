@@ -66,6 +66,52 @@ const App: React.FC = () => {
     "Impostos", "Seguros", "Investimentos", "Trabalho", "Pets", "Outros"
   ];
 
+  const [hasNewUpdate, setHasNewUpdate] = useState(false);
+
+  // --- Core Utility Functions ---
+
+  const fetchBoletos = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('boletos')
+      .select('*')
+      .order('due_date', { ascending: true });
+
+    if (data) {
+      setAllBoletos(data.map(b => ({
+        ...b,
+        userId: b.user_id,
+        amount: b.amount,
+        dueDate: b.due_date,
+        calendarEventId: b.calendar_event_id,
+        createdAt: new Date(b.created_at).getTime()
+      })));
+    }
+    setHasInitialized(true);
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    const audio = new Audio(NOTIFICATION_SOUND_URL);
+    audio.play().catch(e => console.error("Erro ao tocar som:", e));
+  }, []);
+
+  const sendNotification = useCallback((title: string, body: string, playSound = true) => {
+    if (playSound) playNotificationSound();
+
+    if (typeof Notification === 'undefined') {
+      console.log(`${title}\n${body}`);
+      return;
+    }
+    if (Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body,
+          icon: 'https://cdn-icons-png.flaticon.com/512/5968/5968292.png',
+          tag: 'boleto-flow'
+        });
+      } catch (e) { console.log(`🔔 ${title}\n\n${body}`); }
+    }
+  }, [playNotificationSound]);
+
   // --- Auth Logic ---
 
   useEffect(() => {
@@ -93,20 +139,38 @@ const App: React.FC = () => {
       }
     });
 
-    // --- Realtime Subscription ---
+    return () => authSub.unsubscribe();
+  }, []);
+
+  // --- Realtime Subscription ---
+  useEffect(() => {
+    if (!session?.user) return;
+
     const boletosChannel = supabase
       .channel('public:boletos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'boletos' }, (payload) => {
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'boletos'
+      }, (payload) => {
         console.log('Realtime change received:', payload);
         fetchBoletos();
+
+        if (payload.eventType === 'INSERT') {
+          sendNotification('Novo Boleto!', `O boleto "${payload.new.title}" foi adicionado.`, true);
+          setHasNewUpdate(true);
+        } else if (payload.eventType === 'UPDATE' || payload.eventType === 'DELETE') {
+          setHasNewUpdate(true);
+        }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Realtime subscription status:', status);
+      });
 
     return () => {
-      authSub.unsubscribe();
       supabase.removeChannel(boletosChannel);
     };
-  }, []);
+  }, [session, fetchBoletos, sendNotification]);
 
   const syncUser = async (supabaseUser: any) => {
     const { data: profile, error } = await supabase
@@ -137,24 +201,7 @@ const App: React.FC = () => {
     }
   };
 
-  const fetchBoletos = async () => {
-    const { data, error } = await supabase
-      .from('boletos')
-      .select('*')
-      .order('due_date', { ascending: true });
-
-    if (data) {
-      setAllBoletos(data.map(b => ({
-        ...b,
-        userId: b.user_id,
-        amount: b.amount,
-        dueDate: b.due_date,
-        calendarEventId: b.calendar_event_id,
-        createdAt: new Date(b.created_at).getTime()
-      })));
-    }
-    setHasInitialized(true);
-  };
+  /* fetchBoletos removed from here */
 
   const validateAuth = () => {
     const errors: Record<string, string> = {};
@@ -215,28 +262,7 @@ const App: React.FC = () => {
 
   // --- Notification & Audio Logic ---
 
-  const playNotificationSound = useCallback(() => {
-    const audio = new Audio(NOTIFICATION_SOUND_URL);
-    audio.play().catch(e => console.error("Erro ao tocar som:", e));
-  }, []);
-
-  const sendNotification = useCallback((title: string, body: string, playSound = true) => {
-    if (playSound) playNotificationSound();
-
-    if (typeof Notification === 'undefined') {
-      console.log(`${title}\n${body}`);
-      return;
-    }
-    if (Notification.permission === 'granted') {
-      try {
-        new Notification(title, {
-          body,
-          icon: 'https://cdn-icons-png.flaticon.com/512/5968/5968292.png',
-          tag: 'boleto-flow'
-        });
-      } catch (e) { console.log(`🔔 ${title}\n\n${body}`); }
-    }
-  }, [playNotificationSound]);
+  /* sendNotification and playNotificationSound removed from here */
 
   useEffect(() => {
     if (!hasInitialized || !currentUser) return;
@@ -257,18 +283,20 @@ const App: React.FC = () => {
   }, [allBoletos, currentUser, hasInitialized, sendNotification]);
 
   const handleRequestNotification = async () => {
+    setHasNewUpdate(false);
     const permission = await Notification.requestPermission();
     setNotificationStatus(permission);
     if (permission === 'granted') sendNotification("Sistema Ativado!", "Notificações ligadas.", false);
   };
 
   const handleActivatePush = async () => {
-    const success = await subscribeUserToPush();
-    if (success) {
+    const result = await subscribeUserToPush();
+    if (result === true || (typeof result === 'object' && result.success)) {
       setIsPushActive(true);
       alert("Notificações Push ativadas com sucesso!");
     } else {
-      alert("Falha ao ativar notificações push. Verifique se seu navegador suporta.");
+      const errorMsg = typeof result === 'object' ? result.error : "Navegador incompatível.";
+      alert(`Falha ao ativar: ${errorMsg}\n\nNota: Se estiver no iPhone (iOS), você deve primeiro adicionar este site à "Tela de Início" pelo menu de compartilhamento do Safari.`);
     }
   };
 
@@ -482,10 +510,13 @@ const App: React.FC = () => {
               <div className="flex items-center gap-1.5 px-2">
                 <button
                   onClick={handleRequestNotification}
-                  className={`p-2 rounded-full transition-all ${notificationStatus === 'granted' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
+                  className={`p-2 rounded-full transition-all relative ${notificationStatus === 'granted' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
                   title="Som de Alerta"
                 >
                   <BellAlertIcon className="w-5 h-5" />
+                  {hasNewUpdate && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full border-2 border-white animate-bounce"></span>
+                  )}
                 </button>
                 <button
                   onClick={handleActivatePush}
