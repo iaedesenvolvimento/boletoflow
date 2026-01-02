@@ -1,0 +1,8 @@
+
+{
+  "name": "BoletoFlow - Gestor Inteligente de Boletos",
+  "description": "Um assistente inteligente para gestão de contas e boletos. Use IA para extrair dados de textos, gerencie datas de vencimento e sincronize automaticamente com seu Google Calendar.",
+  "requestFramePermissions": [
+    "notifications"
+  ]
+}
