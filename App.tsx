@@ -47,6 +47,7 @@ const App: React.FC = () => {
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission>(typeof Notification !== 'undefined' ? Notification.permission : 'default');
   const [isPushActive, setIsPushActive] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   // Audio state
   const lastNotifiedRef = useRef<Set<string>>(new Set());
@@ -150,40 +151,39 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    console.log('Realtime: Iniciando canal para usuário', session.user.id);
+    console.log('Realtime: Iniciando conexão...');
 
     const boletosChannel = supabase
-      .channel('boletos-realtime')
+      .channel('db-changes')
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'boletos'
       }, (payload: any) => {
-        // Manually filter for user security/privacy as a backup
         const newRecord = payload.new as any;
         const oldRecord = payload.old as any;
+        const currentUserId = session.user.id;
 
-        if (newRecord && newRecord.user_id === session.user.id) {
-          console.log('Realtime: Mudança detectada!', payload.eventType);
-          fetchBoletos();
+        const belongsToUser = (newRecord && newRecord.user_id === currentUserId) ||
+          (oldRecord && oldRecord.user_id === currentUserId);
+
+        if (belongsToUser) {
+          console.log('Realtime: Mudança válida detectada!', payload.eventType);
+          setTimeout(fetchBoletos, 300);
 
           if (payload.eventType === 'INSERT') {
             sendNotification('Novo Boleto!', `O boleto "${newRecord.title}" foi adicionado.`, true);
           }
           setHasNewUpdate(true);
-        } else if (oldRecord && oldRecord.user_id === session.user.id) {
-          // For DELETE we only have the old data usually
-          console.log('Realtime: Boleto removido');
-          fetchBoletos();
-          setHasNewUpdate(true);
         }
       })
       .subscribe((status) => {
-        console.log('Realtime: Status da conexão:', status);
+        console.log('Realtime Status:', status);
+        setRealtimeConnected(status === 'SUBSCRIBED');
       });
 
     return () => {
-      console.log('Realtime: Desconectando do canal');
+      console.log('Realtime: Desconectando...');
       supabase.removeChannel(boletosChannel);
     };
   }, [session?.user?.id, fetchBoletos, sendNotification]);
@@ -541,6 +541,10 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="flex items-center bg-slate-100 p-1 rounded-full border border-slate-200">
               <div className="flex items-center gap-1.5 px-2">
+                <div
+                  className={`w-2 h-2 rounded-full mr-1 transition-all ${realtimeConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-rose-500'}`}
+                  title={realtimeConnected ? 'Sincronismo Ativo' : 'Sincronismo Desconectado'}
+                />
                 <button
                   onClick={handleRequestNotification}
                   className={`p-2 rounded-full transition-all relative ${notificationStatus === 'granted' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-400 hover:bg-slate-100'}`}
