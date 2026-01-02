@@ -4,6 +4,7 @@ import { Boleto, User } from './types';
 import { extractBoletoInfo } from './services/geminiService';
 import { initGoogleClient, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from './services/googleCalendarService';
 import { supabase } from './services/supabaseClient';
+import { registerServiceWorker, subscribeUserToPush } from './services/pushService';
 import {
   PlusIcon,
   CalendarIcon,
@@ -44,6 +45,7 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [editingBoletoId, setEditingBoletoId] = useState<string | null>(null);
   const [notificationStatus, setNotificationStatus] = useState<NotificationPermission>(typeof Notification !== 'undefined' ? Notification.permission : 'default');
+  const [isPushActive, setIsPushActive] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // Audio state
@@ -67,6 +69,8 @@ const App: React.FC = () => {
   // --- Auth Logic ---
 
   useEffect(() => {
+    registerServiceWorker();
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
@@ -239,6 +243,16 @@ const App: React.FC = () => {
     const permission = await Notification.requestPermission();
     setNotificationStatus(permission);
     if (permission === 'granted') sendNotification("Sistema Ativado!", "Notificações ligadas.", false);
+  };
+
+  const handleActivatePush = async () => {
+    const success = await subscribeUserToPush();
+    if (success) {
+      setIsPushActive(true);
+      alert("Notificações Push ativadas com sucesso!");
+    } else {
+      alert("Falha ao ativar notificações push. Verifique se seu navegador suporta.");
+    }
   };
 
   // --- App Logic ---
@@ -451,8 +465,18 @@ const App: React.FC = () => {
               <button
                 onClick={handleRequestNotification}
                 className={`p-2 rounded-full transition-all ${notificationStatus === 'granted' ? 'text-indigo-600' : 'text-slate-400'}`}
+                title="Ativar Alerta Sonoro"
               >
                 <BellAlertIcon className="w-5 h-5" />
+              </button>
+              <div className="h-4 w-px bg-slate-200 mx-1"></div>
+              <button
+                onClick={handleActivatePush}
+                className={`p-2 rounded-full transition-all ${isPushActive ? 'text-emerald-500' : 'text-slate-400 font-bold text-xs'} flex items-center gap-1`}
+                title="Ativar Notificações Push (Desktop/Android)"
+              >
+                <SparklesIcon className="w-5 h-5" />
+                <span className="text-[8px] uppercase">Push</span>
               </button>
               <div className="h-4 w-px bg-slate-200 mx-1"></div>
               <div className="flex items-center gap-2 pr-3 pl-1">
