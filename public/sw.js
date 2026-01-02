@@ -6,7 +6,10 @@ self.addEventListener('push', function (event) {
             body: data.body,
             icon: 'https://cdn-icons-png.flaticon.com/512/5968/5968292.png',
             badge: 'https://cdn-icons-png.flaticon.com/512/5968/5968292.png',
-            vibrate: [100, 50, 100],
+            vibrate: [200, 100, 200],
+            tag: 'boleto-vencimento',
+            renotify: true,
+            requireInteraction: true,
             data: {
                 url: data.url || '/'
             }

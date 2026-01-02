@@ -76,3 +76,18 @@ function urlBase64ToUint8Array(base64String: string) {
     }
     return outputArray;
 }
+
+export async function checkPushSubscription() {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+            const registration = await navigator.serviceWorker.getRegistration();
+            if (registration) {
+                const subscription = await registration.pushManager.getSubscription();
+                return !!subscription;
+            }
+        } catch (e) {
+            console.error('Erro ao verificar inscrição:', e);
+        }
+    }
+    return false;
+}

@@ -4,7 +4,7 @@ import { Boleto, User } from './types';
 import { extractBoletoInfo } from './services/geminiService';
 import { initGoogleClient, createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from './services/googleCalendarService';
 import { supabase } from './services/supabaseClient';
-import { registerServiceWorker, subscribeUserToPush } from './services/pushService';
+import { registerServiceWorker, subscribeUserToPush, checkPushSubscription } from './services/pushService';
 import {
   PlusIcon,
   CalendarIcon,
@@ -69,7 +69,9 @@ const App: React.FC = () => {
   // --- Auth Logic ---
 
   useEffect(() => {
-    registerServiceWorker();
+    registerServiceWorker().then(() => {
+      checkPushSubscription().then(active => setIsPushActive(active));
+    });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
