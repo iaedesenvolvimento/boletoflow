@@ -472,11 +472,11 @@ const App: React.FC = () => {
               <div className="h-4 w-px bg-slate-200 mx-1"></div>
               <button
                 onClick={handleActivatePush}
-                className={`p-2 rounded-full transition-all ${isPushActive ? 'text-emerald-500' : 'text-slate-400 font-bold text-xs'} flex items-center gap-1`}
+                className={`p-2 rounded-full transition-all ${isPushActive ? 'bg-emerald-50 text-emerald-600' : 'text-slate-400 font-bold text-xs'} flex items-center gap-1 hover:bg-slate-150`}
                 title="Ativar Notificações Push (Desktop/Android)"
               >
-                <SparklesIcon className="w-5 h-5" />
-                <span className="text-[8px] uppercase">Push</span>
+                <BellIcon className={`w-5 h-5 ${isPushActive ? 'fill-emerald-600' : ''}`} />
+                <span className="text-[9px] uppercase tracking-tighter">Push</span>
               </button>
               <div className="h-4 w-px bg-slate-200 mx-1"></div>
               <div className="flex items-center gap-2 pr-3 pl-1">

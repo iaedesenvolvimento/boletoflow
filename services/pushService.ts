@@ -18,8 +18,24 @@ export async function registerServiceWorker() {
 
 export async function subscribeUserToPush() {
     try {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.subscribe({
+        if (!VAPID_PUBLIC_KEY) {
+            throw new Error('VITE_VAPID_PUBLIC_KEY não configurada no cliente.');
+        }
+
+        let registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+            registration = await registerServiceWorker();
+        }
+
+        if (!registration) {
+            throw new Error('Service Worker não pôde ser registrado.');
+        }
+
+        // Wait for ready
+        const readyRegistration = await navigator.serviceWorker.ready;
+        console.log('SW Ready for push subscription');
+
+        const subscription = await readyRegistration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
