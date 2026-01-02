@@ -158,17 +158,20 @@ const App: React.FC = () => {
         event: '*',
         schema: 'public',
         table: 'boletos'
-      }, (payload) => {
+      }, (payload: any) => {
         // Manually filter for user security/privacy as a backup
-        if (payload.new && payload.new.user_id === session.user.id) {
+        const newRecord = payload.new as any;
+        const oldRecord = payload.old as any;
+
+        if (newRecord && newRecord.user_id === session.user.id) {
           console.log('Realtime: Mudança detectada!', payload.eventType);
           fetchBoletos();
 
           if (payload.eventType === 'INSERT') {
-            sendNotification('Novo Boleto!', `O boleto "${payload.new.title}" foi adicionado.`, true);
+            sendNotification('Novo Boleto!', `O boleto "${newRecord.title}" foi adicionado.`, true);
           }
           setHasNewUpdate(true);
-        } else if (payload.old && payload.old.user_id === session.user.id) {
+        } else if (oldRecord && oldRecord.user_id === session.user.id) {
           // For DELETE we only have the old data usually
           console.log('Realtime: Boleto removido');
           fetchBoletos();
