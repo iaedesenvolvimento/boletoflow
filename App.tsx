@@ -59,6 +59,7 @@ const App: React.FC = () => {
   const [formCategory, setFormCategory] = useState('Outros');
   const [aiInput, setAiInput] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const categories = [
     "Moradia", "Saúde", "Educação", "Lazer", "Serviços",
@@ -90,8 +91,11 @@ const App: React.FC = () => {
   }, []);
 
   const playNotificationSound = useCallback(() => {
-    const audio = new Audio(NOTIFICATION_SOUND_URL);
-    audio.play().catch(e => console.error("Erro ao tocar som:", e));
+    if (!audioRef.current) {
+      audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
+    }
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(e => console.error("Erro ao tocar som:", e));
   }, []);
 
   const sendNotification = useCallback((title: string, body: string, playSound = true) => {
@@ -171,6 +175,23 @@ const App: React.FC = () => {
       supabase.removeChannel(boletosChannel);
     };
   }, [session, fetchBoletos, sendNotification]);
+
+  useEffect(() => {
+    const primeAudio = () => {
+      if (!audioRef.current) {
+        audioRef.current = new Audio(NOTIFICATION_SOUND_URL);
+        audioRef.current.load();
+      }
+      window.removeEventListener('click', primeAudio);
+      window.removeEventListener('touchstart', primeAudio);
+    };
+    window.addEventListener('click', primeAudio);
+    window.addEventListener('touchstart', primeAudio);
+    return () => {
+      window.removeEventListener('click', primeAudio);
+      window.removeEventListener('touchstart', primeAudio);
+    };
+  }, []);
 
   const syncUser = async (supabaseUser: any) => {
     const { data: profile, error } = await supabase
