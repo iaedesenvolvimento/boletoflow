@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [authErrors, setAuthErrors] = useState<Record<string, string>>({});
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [showAuthSuccess, setShowAuthSuccess] = useState(false);
 
   // App State
   const [allBoletos, setAllBoletos] = useState<Boleto[]>([]);
@@ -266,13 +267,21 @@ const App: React.FC = () => {
         const { data, error } = await supabase.auth.signUp({
           email: authForm.email,
           password: authForm.password,
+          options: {
+            data: { name: authForm.name }
+          }
         });
 
         if (error) throw error;
+
         if (data.user) {
           await supabase.from('profiles').insert([
             { id: data.user.id, name: authForm.name, email: authForm.email }
           ]);
+
+          setShowAuthSuccess(true);
+          // Small delay to let user see the success state
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -280,10 +289,20 @@ const App: React.FC = () => {
           password: authForm.password,
         });
         if (error) throw error;
+
+        setShowAuthSuccess(true);
+        await new Promise(resolve => setTimeout(resolve, 800));
       }
     } catch (error: any) {
       console.error('Auth Error Details:', error);
-      alert(`Erro na autenticação: ${error.message || JSON.stringify(error)}`);
+      let message = "Ocorreu um erro inesperado.";
+
+      if (error.message === "User already registered") message = "Este e-mail já está cadastrado.";
+      else if (error.message === "Invalid login credentials") message = "E-mail ou senha incorretos.";
+      else if (error.status === 429) message = "Muitas tentativas. Tente novamente mais tarde.";
+      else message = error.message;
+
+      setAuthErrors({ ...authErrors, general: message });
     } finally {
       setIsAuthLoading(false);
     }
@@ -448,8 +467,14 @@ const App: React.FC = () => {
             </div>
 
             <form onSubmit={handleAuth} className="space-y-5">
+              {authErrors.general && (
+                <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+                  <p className="text-xs font-bold text-rose-500 text-center">{authErrors.general}</p>
+                </div>
+              )}
+
               {authMode === 'register' && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 animate-in fade-in slide-in-from-left-4 duration-500">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
                   <div className="relative">
                     <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -465,7 +490,7 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 transition-all duration-500">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail</label>
                 <div className="relative">
                   <EnvelopeIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -480,7 +505,7 @@ const App: React.FC = () => {
                 {authErrors.email && <p className="text-[10px] font-bold text-rose-500 ml-1">{authErrors.email}</p>}
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 transition-all duration-500">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Senha</label>
                 <div className="relative">
                   <LockClosedIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -496,7 +521,7 @@ const App: React.FC = () => {
               </div>
 
               {authMode === 'register' && (
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 animate-in fade-in slide-in-from-right-4 duration-500">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmar Senha</label>
                   <div className="relative">
                     <LockClosedIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -514,11 +539,23 @@ const App: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={isAuthLoading}
-                className="w-full bg-indigo-600 text-white py-5 rounded-[20px] font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                disabled={isAuthLoading || showAuthSuccess}
+                className={`w-full py-5 rounded-[20px] font-black uppercase text-xs tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 overflow-hidden relative ${showAuthSuccess
+                    ? 'bg-emerald-500 text-white shadow-emerald-200'
+                    : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0'
+                  }`}
               >
-                {isAuthLoading ? <ArrowPathIcon className="w-5 h-5 animate-spin" /> : null}
-                {authMode === 'login' ? 'Acessar Conta' : 'Criar minha conta'}
+                {showAuthSuccess ? (
+                  <div className="flex items-center gap-2 animate-in fade-in zoom-in duration-300">
+                    <CheckCircleIcon className="w-5 h-5" />
+                    <span>{authMode === 'login' ? 'Identificado!' : 'Bem-vindo(a)!'}</span>
+                  </div>
+                ) : (
+                  <>
+                    {isAuthLoading && <ArrowPathIcon className="w-5 h-5 animate-spin" />}
+                    <span>{authMode === 'login' ? 'Acessar Conta' : 'Criar minha conta'}</span>
+                  </>
+                )}
               </button>
             </form>
           </div>
