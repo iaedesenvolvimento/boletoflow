@@ -61,6 +61,8 @@ const App: React.FC = () => {
   const [formCategory, setFormCategory] = useState('Outros');
   const [aiInput, setAiInput] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const categories = [
@@ -91,6 +93,16 @@ const App: React.FC = () => {
     }
     setHasInitialized(true);
   }, []);
+
+  const fetchLogs = useCallback(async () => {
+    if (!session?.user?.id) return;
+    const { data } = await supabase
+      .from('boleto_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(20);
+    if (data) setLogs(data);
+  }, [session?.user?.id]);
 
   const playNotificationSound = useCallback(() => {
     if (!audioRef.current) {
@@ -184,11 +196,33 @@ const App: React.FC = () => {
       });
 
     return () => {
-      console.log('Realtime: Desconectando...');
+      console.log('Realtime: Limpando conexão');
       supabase.removeChannel(boletosChannel);
     };
   }, [session?.user?.id, fetchBoletos, sendNotification]);
 
+  // --- Logs Subscription ---
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    fetchLogs();
+
+    const logsChannel = supabase
+      .channel('public:boleto_logs')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'boleto_logs',
+        filter: `user_id=eq.${session.user.id}`
+      }, () => {
+        fetchLogs();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(logsChannel);
+    };
+  }, [session?.user?.id, fetchLogs]);
   useEffect(() => {
     const primeAudio = () => {
       if (!audioRef.current) {
@@ -282,9 +316,14 @@ const App: React.FC = () => {
           setShowAuthSuccess(true);
           // Small delay to let user see the success state
           await new Promise(resolve => setTimeout(resolve, 1500));
+
+          // FORCE SYNC and Navigation if onAuthStateChange hasn't fired yet
+          if (!currentUser) {
+            await syncUser(data.user);
+          }
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: authForm.email,
           password: authForm.password,
         });
@@ -292,6 +331,10 @@ const App: React.FC = () => {
 
         setShowAuthSuccess(true);
         await new Promise(resolve => setTimeout(resolve, 800));
+
+        if (data.user && !currentUser) {
+          await syncUser(data.user);
+        }
       }
     } catch (error: any) {
       console.error('Auth Error Details:', error);
@@ -541,8 +584,8 @@ const App: React.FC = () => {
                 type="submit"
                 disabled={isAuthLoading || showAuthSuccess}
                 className={`w-full py-5 rounded-[20px] font-black uppercase text-xs tracking-widest shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-50 overflow-hidden relative ${showAuthSuccess
-                    ? 'bg-emerald-500 text-white shadow-emerald-200'
-                    : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0'
+                  ? 'bg-emerald-500 text-white shadow-emerald-200'
+                  : 'bg-indigo-600 text-white shadow-indigo-100 hover:bg-indigo-700 hover:-translate-y-0.5 active:translate-y-0'
                   }`}
               >
                 {showAuthSuccess ? (
@@ -607,6 +650,14 @@ const App: React.FC = () => {
                 </div>
                 <span className="text-[10px] font-black uppercase text-slate-500 max-w-[80px] truncate">{currentUser?.name || 'Usuário'}</span>
               </div>
+              <button
+                onClick={() => setIsHistoryOpen(true)}
+                className="p-2 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-slate-100 transition-all"
+                title="Histórico de Atividades"
+              >
+                <ArrowPathIcon className="w-5 h-5" />
+              </button>
+              <div className="w-px h-6 bg-slate-200 mx-1"></div>
               <button
                 onClick={handleLogout}
                 className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
@@ -712,7 +763,7 @@ const App: React.FC = () => {
         <span className="font-black text-lg">Nova Conta</span>
       </button>
 
-      {/* Reutilizando Modal de Inclusão com Estilo Refinado */}
+      {/* Modal de Inclusão */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setIsModalOpen(false)}></div>
@@ -788,7 +839,71 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+
+      {/* History Drawer */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsHistoryOpen(false)}></div>
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-md animate-in slide-in-from-right duration-500">
+              <div className="h-full flex flex-col bg-white shadow-2xl rounded-l-[40px] border-l border-white overflow-hidden">
+                <div className="p-8 border-b border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
+                      <ArrowPathIcon className="w-6 h-6 text-indigo-600" />
+                      Histórico
+                    </h2>
+                    <button onClick={() => setIsHistoryOpen(false)} className="p-2 rounded-full hover:bg-slate-100 text-slate-400 transition-colors">
+                      <XMarkIcon className="w-6 h-6" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                  <div className="space-y-6">
+                    {logs.length === 0 ? (
+                      <div className="text-center py-20">
+                        <InformationCircleIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                        <p className="text-slate-400 font-bold">Nenhuma atividade recente.</p>
+                      </div>
+                    ) : (
+                      logs.map((log) => (
+                        <div key={log.id} className="flex gap-4 group">
+                          <div className="flex flex-col items-center">
+                            <div className={`p-2 rounded-xl ${log.action.includes('Excluiu') ? 'bg-rose-50 text-rose-500' :
+                              log.action.includes('Marcou como pendente') ? 'bg-amber-50 text-amber-500' :
+                                log.action.includes('Manteve como pago') ? 'bg-emerald-50 text-emerald-500' :
+                                  'bg-indigo-50 text-indigo-500'
+                              }`}>
+                              {log.action.includes('Excluiu') ? <TrashIcon className="w-4 h-4" /> :
+                                log.action.includes('Marcou como pendente') ? <ArrowUturnLeftIcon className="w-4 h-4" /> :
+                                  log.action.includes('Manteve como pago') ? <CheckIcon className="w-4 h-4" /> :
+                                    <PlusIcon className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 w-px bg-slate-100 my-2 group-last:hidden"></div>
+                          </div>
+                          <div className="pb-6 w-full">
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="font-black text-slate-800 text-sm tracking-tight">{log.action}</p>
+                              <span className="text-[10px] font-bold text-slate-400">
+                                {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-slate-500">
+                              Boleto: <span className="text-indigo-600">{log.boleto_title}</span>
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div >
   );
 };
 
