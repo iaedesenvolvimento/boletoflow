@@ -15,6 +15,7 @@ export interface Boleto {
   barcode?: string;
   status: 'pending' | 'paid' | 'overdue';
   category?: string;
+  is_recurring: boolean;
   calendarEventId?: string;
   createdAt: number;
 }

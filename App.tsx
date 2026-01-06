@@ -6,26 +6,26 @@ import { initGoogleClient, createCalendarEvent, deleteCalendarEvent, updateCalen
 import { supabase } from './services/supabaseClient';
 import { registerServiceWorker, subscribeUserToPush, checkPushSubscription } from './services/pushService';
 import {
+  PencilIcon,
   PlusIcon,
-  CalendarIcon,
+  CheckIcon,
   TrashIcon,
-  CheckCircleIcon,
+  UsersIcon as UserIcon,
   ArrowPathIcon,
   BellIcon,
   SparklesIcon,
   CreditCardIcon,
   XMarkIcon,
   DocumentTextIcon,
-  PencilSquareIcon,
   BellAlertIcon,
   BellSlashIcon,
   InformationCircleIcon,
-  CheckIcon,
   ArrowUturnLeftIcon,
-  UserIcon,
   EnvelopeIcon,
   LockClosedIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  CalendarIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 const NOTIFICATION_SOUND_URL = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
@@ -59,6 +59,8 @@ const App: React.FC = () => {
   const [formDueDate, setFormDueDate] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
   const [formCategory, setFormCategory] = useState('Outros');
+  const [formIsRecurring, setFormIsRecurring] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [aiInput, setAiInput] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -404,24 +406,25 @@ const App: React.FC = () => {
   };
 
   const handleSaveBoleto = async () => {
-    if (!formTitle || !formAmount || !formDueDate || !currentUser) return;
+    if (!session?.user?.id || !formTitle || !formAmount || !formDueDate) return;
 
     const boletoData = {
-      user_id: currentUser.id,
+      user_id: session.user.id,
       title: formTitle,
       amount: parseFloat(formAmount),
       due_date: formDueDate,
       barcode: formBarcode,
       category: formCategory,
+      is_recurring: formIsRecurring,
       status: 'pending' as const
     };
 
     try {
-      if (editingBoletoId) {
+      if (editingId) {
         const { error } = await supabase
           .from('boletos')
-          .update({ ...boletoData })
-          .eq('id', editingBoletoId);
+          .update(boletoData)
+          .eq('id', editingId);
         if (error) throw error;
       } else {
         const { error } = await supabase
@@ -429,29 +432,65 @@ const App: React.FC = () => {
           .insert([boletoData]);
         if (error) throw error;
       }
-      fetchBoletos();
+
       setIsModalOpen(false);
       resetForm();
+      fetchBoletos();
     } catch (error: any) {
-      alert(error.message);
+      console.error('Error saving boleto:', error);
+      alert('Erro ao salvar boleto');
     }
   };
 
   const resetForm = () => {
-    setFormTitle(''); setFormAmount(''); setFormDueDate(''); setFormBarcode(''); setFormCategory('Outros'); setAiInput(''); setShowAiInput(false); setEditingBoletoId(null);
+    setFormTitle('');
+    setFormAmount('');
+    setFormDueDate('');
+    setFormBarcode('');
+    setFormCategory('Outros');
+    setFormIsRecurring(false);
+    setAiInput(''); setShowAiInput(false);
+    setEditingId(null);
   };
 
+  const handleEditBoleto = (boleto: Boleto) => {
+    setEditingId(boleto.id);
+    setFormTitle(boleto.title);
+    setFormAmount(boleto.amount.toString());
+    setFormDueDate(boleto.dueDate);
+    setFormBarcode(boleto.barcode || '');
+    setFormCategory(boleto.category);
+    setFormIsRecurring(boleto.is_recurring);
+    setIsModalOpen(true);
+  };
   const toggleBoletoStatus = async (id: string) => {
     const boleto = allBoletos.find(b => b.id === id);
     if (!boleto) return;
 
-    const newStatus = boleto.status === 'paid' ? 'pending' : 'paid';
-    const { error } = await supabase
-      .from('boletos')
-      .update({ status: newStatus })
-      .eq('id', id);
+    const newStatus = boleto.status === 'pending' ? 'paid' : 'pending';
+    let newDueDate = boleto.dueDate;
 
-    if (!error) fetchBoletos();
+    // Recurrence logic
+    if (newStatus === 'paid' && boleto.is_recurring) {
+      const current = new Date(boleto.dueDate);
+      current.setMonth(current.getMonth() + 1);
+      newDueDate = current.toISOString().split('T')[0];
+    }
+
+    try {
+      const { error } = await supabase
+        .from('boletos')
+        .update({
+          status: boleto.is_recurring && newStatus === 'paid' ? 'pending' : newStatus,
+          due_date: newDueDate
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+      fetchBoletos();
+    } catch (error: any) {
+      console.error('Error toggling status:', error);
+    }
   };
 
   const handleDeleteBoleto = async (id: string) => {
@@ -731,6 +770,14 @@ const App: React.FC = () => {
 
                     <div className="flex items-center gap-2.5">
                       <button
+                        onClick={() => handleEditBoleto(boleto)}
+                        className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
+                        title="Editar"
+                      >
+                        <PencilIcon className="w-6 h-6" />
+                      </button>
+
+                      <button
                         onClick={() => toggleBoletoStatus(boleto.id)}
                         className={`h-12 px-6 rounded-2xl text-sm font-black transition-all ${boleto.status === 'paid'
                           ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
@@ -820,6 +867,15 @@ const App: React.FC = () => {
                   </select>
                 </div>
 
+                <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-all hover:bg-slate-100 cursor-pointer" onClick={() => setFormIsRecurring(!formIsRecurring)}>
+                  <div className={`w-10 h-6 rounded-full relative transition-colors ${formIsRecurring ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                    <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${formIsRecurring ? 'translate-x-4' : ''}`} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-slate-900">Repetir Mensalmente</p>
+                    <p className="text-[10px] font-bold text-slate-400">Gera nova conta após o pagamento</p>
+                  </div>
+                </div>
                 <div className="flex gap-4 pt-6">
                   <button
                     onClick={() => setIsModalOpen(false)}
@@ -860,38 +916,60 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
-                  <div className="space-y-6">
+                  <div className="space-y-8">
                     {logs.length === 0 ? (
                       <div className="text-center py-20">
                         <InformationCircleIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                         <p className="text-slate-400 font-bold">Nenhuma atividade recente.</p>
                       </div>
                     ) : (
-                      logs.map((log) => (
-                        <div key={log.id} className="flex gap-4 group">
-                          <div className="flex flex-col items-center">
-                            <div className={`p-2 rounded-xl ${log.action.includes('Excluiu') ? 'bg-rose-50 text-rose-500' :
-                              log.action.includes('Marcou como pendente') ? 'bg-amber-50 text-amber-500' :
-                                log.action.includes('Manteve como pago') ? 'bg-emerald-50 text-emerald-500' :
-                                  'bg-indigo-50 text-indigo-500'
-                              }`}>
-                              {log.action.includes('Excluiu') ? <TrashIcon className="w-4 h-4" /> :
-                                log.action.includes('Marcou como pendente') ? <ArrowUturnLeftIcon className="w-4 h-4" /> :
-                                  log.action.includes('Manteve como pago') ? <CheckIcon className="w-4 h-4" /> :
-                                    <PlusIcon className="w-4 h-4" />}
-                            </div>
-                            <div className="flex-1 w-px bg-slate-100 my-2 group-last:hidden"></div>
-                          </div>
-                          <div className="pb-6 w-full">
-                            <div className="flex items-center justify-between mb-1">
-                              <p className="font-black text-slate-800 text-sm tracking-tight">{log.action}</p>
-                              <span className="text-[10px] font-bold text-slate-400">
-                                {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                              </span>
-                            </div>
-                            <p className="text-xs font-bold text-slate-500">
-                              Boleto: <span className="text-indigo-600">{log.boleto_title}</span>
-                            </p>
+                      Object.entries(
+                        logs.reduce((acc: any, log) => {
+                          const date = new Date(log.created_at);
+                          const today = new Date();
+                          const yesterday = new Date();
+                          yesterday.setDate(yesterday.getDate() - 1);
+
+                          let category = "Anteriores";
+                          if (date.toDateString() === today.toDateString()) category = "Hoje";
+                          else if (date.toDateString() === yesterday.toDateString()) category = "Ontem";
+
+                          if (!acc[category]) acc[category] = [];
+                          acc[category].push(log);
+                          return acc;
+                        }, {})
+                      ).map(([category, items]: [string, any]) => (
+                        <div key={category} className="space-y-4">
+                          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 bg-white/95 py-2 z-10">{category}</h3>
+                          <div className="space-y-4">
+                            {items.map((log: any) => (
+                              <div key={log.id} className="flex gap-4 group">
+                                <div className="flex flex-col items-center">
+                                  <div className={`p-2 rounded-xl ${log.action.includes('Excluiu') ? 'bg-rose-50 text-rose-500' :
+                                    log.action.includes('Marcou como pendente') ? 'bg-amber-50 text-amber-500' :
+                                      log.action.includes('Manteve como pago') ? 'bg-emerald-50 text-emerald-500' :
+                                        'bg-indigo-50 text-indigo-500'
+                                    }`}>
+                                    {log.action.includes('Excluiu') ? <TrashIcon className="w-4 h-4" /> :
+                                      log.action.includes('Marcou como pendente') ? <ArrowUturnLeftIcon className="w-4 h-4" /> :
+                                        log.action.includes('Manteve como pago') ? <CheckIcon className="w-4 h-4" /> :
+                                          <PlusIcon className="w-4 h-4" />}
+                                  </div>
+                                  <div className="flex-1 w-px bg-slate-100 my-2 group-last:hidden"></div>
+                                </div>
+                                <div className="pb-4 w-full border-b border-slate-50 group-last:border-0">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <p className="font-black text-slate-800 text-sm tracking-tight">{log.action}</p>
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                      {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs font-bold text-slate-500">
+                                    Boleto: <span className="text-indigo-600">{log.boleto_title}</span>
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ))
