@@ -61,6 +61,7 @@ const App: React.FC = () => {
   const [formCategory, setFormCategory] = useState('Outros');
   const [formIsRecurring, setFormIsRecurring] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [historyView, setHistoryView] = useState<'date' | 'category'>('date');
   const [aiInput, setAiInput] = useState('');
   const [showAiInput, setShowAiInput] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -904,7 +905,7 @@ const App: React.FC = () => {
             <div className="w-screen max-w-md animate-in slide-in-from-right duration-500">
               <div className="h-full flex flex-col bg-white shadow-2xl rounded-l-[40px] border-l border-white overflow-hidden">
                 <div className="p-8 border-b border-slate-100">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-6">
                     <h2 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
                       <ArrowPathIcon className="w-6 h-6 text-indigo-600" />
                       Histórico
@@ -913,8 +914,22 @@ const App: React.FC = () => {
                       <XMarkIcon className="w-6 h-6" />
                     </button>
                   </div>
-                </div>
 
+                  <div className="flex p-1 bg-slate-100 rounded-xl">
+                    <button
+                      onClick={() => setHistoryView('date')}
+                      className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${historyView === 'date' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Por Data
+                    </button>
+                    <button
+                      onClick={() => setHistoryView('category')}
+                      className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${historyView === 'category' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Por Categoria
+                    </button>
+                  </div>
+                </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                   <div className="space-y-8">
                     {logs.length === 0 ? (
@@ -925,14 +940,19 @@ const App: React.FC = () => {
                     ) : (
                       Object.entries(
                         logs.reduce((acc: any, log) => {
-                          const date = new Date(log.created_at);
-                          const today = new Date();
-                          const yesterday = new Date();
-                          yesterday.setDate(yesterday.getDate() - 1);
+                          let category = "Geral";
+                          if (historyView === 'date') {
+                            const date = new Date(log.created_at);
+                            const today = new Date();
+                            const yesterday = new Date();
+                            yesterday.setDate(yesterday.getDate() - 1);
 
-                          let category = "Anteriores";
-                          if (date.toDateString() === today.toDateString()) category = "Hoje";
-                          else if (date.toDateString() === yesterday.toDateString()) category = "Ontem";
+                            category = "Anteriores";
+                            if (date.toDateString() === today.toDateString()) category = "Hoje";
+                            else if (date.toDateString() === yesterday.toDateString()) category = "Ontem";
+                          } else {
+                            category = log.boleto_category || "Sem Categoria";
+                          }
 
                           if (!acc[category]) acc[category] = [];
                           acc[category].push(log);
@@ -940,32 +960,43 @@ const App: React.FC = () => {
                         }, {})
                       ).map(([category, items]: [string, any]) => (
                         <div key={category} className="space-y-4">
-                          <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest sticky top-0 bg-white/95 py-2 z-10">{category}</h3>
+                          <div className="flex items-center gap-3 sticky top-0 bg-white/95 py-2 z-10">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{category}</h3>
+                            <div className="flex-1 h-px bg-slate-50"></div>
+                            <span className="text-[10px] font-bold text-slate-300 bg-slate-50 px-2 py-0.5 rounded-full">{items.length}</span>
+                          </div>
                           <div className="space-y-4">
                             {items.map((log: any) => (
                               <div key={log.id} className="flex gap-4 group">
                                 <div className="flex flex-col items-center">
-                                  <div className={`p-2 rounded-xl ${log.action.includes('Excluiu') ? 'bg-rose-50 text-rose-500' :
-                                    log.action.includes('Marcou como pendente') ? 'bg-amber-50 text-amber-500' :
-                                      log.action.includes('Manteve como pago') ? 'bg-emerald-50 text-emerald-500' :
-                                        'bg-indigo-50 text-indigo-500'
+                                  <div className={`p-2 rounded-xl border ${log.action.includes('Excluiu') ? 'bg-rose-50 border-rose-100 text-rose-500' :
+                                    log.action.includes('Marcou como pendente') ? 'bg-amber-50 border-amber-100 text-amber-500' :
+                                      log.action.includes('Manteve como pago') || log.action.includes('pago') ? 'bg-emerald-50 border-emerald-100 text-emerald-500' :
+                                        'bg-indigo-50 border-indigo-100 text-indigo-500'
                                     }`}>
                                     {log.action.includes('Excluiu') ? <TrashIcon className="w-4 h-4" /> :
                                       log.action.includes('Marcou como pendente') ? <ArrowUturnLeftIcon className="w-4 h-4" /> :
-                                        log.action.includes('Manteve como pago') ? <CheckIcon className="w-4 h-4" /> :
+                                        log.action.includes('Marcou como pago') || log.action.includes('pago') ? <CheckIcon className="w-4 h-4" /> :
                                           <PlusIcon className="w-4 h-4" />}
                                   </div>
-                                  <div className="flex-1 w-px bg-slate-100 my-2 group-last:hidden"></div>
+                                  <div className="flex-1 w-px bg-slate-50 my-2 group-last:hidden"></div>
                                 </div>
-                                <div className="pb-4 w-full border-b border-slate-50 group-last:border-0">
+                                <div className="pb-4 w-full border-b border-slate-50 group-last:border-0 hover:bg-slate-25 transition-colors rounded-lg px-2 -mx-2">
                                   <div className="flex items-center justify-between mb-1">
-                                    <p className="font-black text-slate-800 text-sm tracking-tight">{log.action}</p>
+                                    <p className="font-extrabold text-slate-800 text-sm tracking-tight">{log.action}</p>
                                     <span className="text-[10px] font-bold text-slate-400">
                                       {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   </div>
-                                  <p className="text-xs font-bold text-slate-500">
-                                    Boleto: <span className="text-indigo-600">{log.boleto_title}</span>
+                                  <p className="text-xs font-bold text-slate-500 flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200"></span>
+                                    Boleto: <span className="text-indigo-600 font-black">{log.boleto_title}</span>
+                                    {historyView === 'date' && log.boleto_category && (
+                                      <>
+                                        <span className="text-slate-300">•</span>
+                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md">{log.boleto_category}</span>
+                                      </>
+                                    )}
                                   </p>
                                 </div>
                               </div>
