@@ -495,12 +495,19 @@ const App: React.FC = () => {
   };
 
   const handleDeleteBoleto = async (id: string) => {
-    if (confirm("Excluir conta?")) {
-      const { error } = await supabase
-        .from('boletos')
-        .delete()
-        .eq('id', id);
-      if (!error) fetchBoletos();
+    if (confirm("Excluir esta conta permanentemente?")) {
+      try {
+        const { error } = await supabase
+          .from('boletos')
+          .delete()
+          .eq('id', id);
+
+        if (error) throw error;
+        fetchBoletos();
+      } catch (error: any) {
+        console.error('Error deleting boleto:', error);
+        alert('Erro ao excluir boleto: ' + (error.message || 'Erro desconhecido'));
+      }
     }
   };
 
